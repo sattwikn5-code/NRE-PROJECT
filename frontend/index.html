@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Route10 – 10-minute delivery routes</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div>
+      <div class="brand">ROUTE<span>10</span></div>
+      <div class="tagline">Safer, faster deliveries</div>
+    </div>
+    <div class="status"><span id="statusDot"></span><span id="statusText">Checking backend...</span></div>
+  </header>
+
+  <main class="page">
+
+    <section class="intro">
+      <h1>Type two addresses. Get the safest route that still arrives on time.</h1>
+      <p>Route10 checks travel time, traffic, weather and road risk, and skips roads that are too risky for your vehicle.</p>
+    </section>
+
+    <div class="layout">
+
+      <!-- ============ LEFT: inputs ============ -->
+      <aside class="card panel">
+        <h2>Delivery details</h2>
+
+        <form id="routeForm" autocomplete="off">
+          <label for="source">Pickup address</label>
+          <div class="row">
+            <input id="source" placeholder="e.g. Howrah Station, Kolkata">
+            <button type="button" class="icon-btn" id="btnLocate" title="Use my current location" aria-label="Use my current location">⌖</button>
+          </div>
+
+          <label for="destination">Customer address</label>
+          <input id="destination" placeholder="e.g. Shibpur, Howrah">
+          <p class="hint">You can also type coordinates like <code>22.5958, 88.2636</code>.</p>
+
+          <label for="vehicle">Vehicle</label>
+          <select id="vehicle"></select>
+
+          <label for="target">Time limit: <b id="targetValue">10 min</b></label>
+          <input id="target" type="range" min="1" max="30" value="10">
+
+          <label class="check"><input id="astar" type="checkbox"> Use A* search (faster on big graphs)</label>
+
+          <label class="check"><input id="autoWeather" type="checkbox" checked> Use live weather</label>
+          <div id="weatherBox" class="hidden">
+            <label for="weather">Weather delay: <b id="weatherValue">0.00</b></label>
+            <input id="weather" type="range" min="0" max="1" step="0.05" value="0">
+          </div>
+
+          <button type="submit" class="btn primary" id="btnRoute">Find route</button>
+        </form>
+
+        <button type="button" class="btn ghost" id="btnFill">Fill demo points</button>
+      </aside>
+
+      <!-- ============ CENTER: map ============ -->
+      <section class="card map-card">
+        <div class="map-head">
+          <div>
+            <h2>Map</h2>
+            <small>Route colour shows risk: <i class="dot low"></i>low <i class="dot moderate"></i>moderate <i class="dot high"></i>high</small>
+          </div>
+          <div class="pill" id="mapTime">–</div>
+        </div>
+        <div id="map"></div>
+      </section>
+
+      <!-- ============ RIGHT: result ============ -->
+      <aside class="card panel" id="resultCard">
+        <h2>Result</h2>
+
+        <div id="empty" class="empty">
+          <p><b>No route yet</b></p>
+          <p>Enter a pickup and a customer address, then press <em>Find route</em>.</p>
+        </div>
+
+        <div id="result" class="hidden">
+          <div id="banner" class="banner">
+            <span id="bannerIcon">✓</span>
+            <div><strong id="bannerTitle"></strong><small id="bannerText"></small></div>
+          </div>
+          <div id="warning" class="warning hidden"></div>
+
+          <div class="metrics" id="metrics">
+            <div><span>Time</span><strong id="mTime">–</strong></div>
+            <div><span>Distance</span><strong id="mDist">–</strong></div>
+            <div><span>Road risk</span><strong id="mRisk">–</strong></div>
+            <div><span>Traffic</span><strong id="mTraffic">–</strong></div>
+            <div><span>Weather</span><strong id="mWeather">–</strong></div>
+            <div><span>Route cost</span><strong id="mWeight">–</strong></div>
+          </div>
+
+          <div class="checks" id="checks">
+            <div><span>Arrives within the time limit</span><b id="cTime">–</b></div>
+            <div><span>Vehicle can use these roads</span><b id="cVehicle">–</b></div>
+            <div><span>Risk under the vehicle's limit</span><b id="cRisk">–</b></div>
+          </div>
+
+          <h3>Road by road</h3>
+          <ol id="segments" class="segments"></ol>
+        </div>
+      </aside>
+    </div>
+
+    <!-- ============ Road network ============ -->
+    <section class="card graph-card">
+      <div class="graph-head">
+        <div>
+          <h2>Road network</h2>
+          <p id="graphInfo" class="hint">Loading...</p>
+        </div>
+        <div class="row">
+          <button type="button" class="btn ghost" id="btnDemo">Load demo network</button>
+          <button type="button" class="btn ghost danger" id="btnClear">Clear network</button>
+        </div>
+      </div>
+      <p id="graphNote" class="note hidden"></p>
+
+      <details id="builder">
+        <summary>Build your own network</summary>
+        <p class="hint">Add points first, then roads between them. Click the map to fill in a point's latitude and longitude.</p>
+
+        <div class="builder">
+          <form id="nodeForm" class="mini-form">
+            <h3>Add a point</h3>
+            <label for="nId">Name</label>
+            <input id="nId" placeholder="e.g. P1" required>
+            <label for="nLat">Latitude</label>
+            <input id="nLat" type="number" step="any" required>
+            <label for="nLon">Longitude</label>
+            <input id="nLon" type="number" step="any" required>
+            <button type="submit" class="btn primary">Add point</button>
+          </form>
+
+          <form id="edgeForm" class="mini-form">
+            <h3>Add a road</h3>
+            <div class="two">
+              <div><label for="eU">From point</label><input id="eU" required></div>
+              <div><label for="eV">To point</label><input id="eV" required></div>
+            </div>
+            <label for="eDist">Length (km)</label>
+            <input id="eDist" type="number" step="any" min="0.01" required>
+            <p class="hint">Each value below is between 0 (none) and 1 (worst).</p>
+            <div class="two">
+              <div><label for="eTraffic">Traffic</label><input id="eTraffic" type="number" step="0.05" min="0" max="1" value="0"></div>
+              <div><label for="eAccidents">Accidents</label><input id="eAccidents" type="number" step="0.05" min="0" max="1" value="0"></div>
+              <div><label for="eWidth">Road width</label><input id="eWidth" type="number" step="0.05" min="0" max="1" value="0.5"></div>
+              <div><label for="eSurface">Surface roughness</label><input id="eSurface" type="number" step="0.05" min="0" max="1" value="0.5"></div>
+              <div><label for="eSlope">Slope</label><input id="eSlope" type="number" step="0.05" min="0" max="1" value="0"></div>
+              <div><label for="eWeather">Weather on road</label><input id="eWeather" type="number" step="0.05" min="0" max="1" value="0"></div>
+            </div>
+            <button type="submit" class="btn primary">Add road</button>
+          </form>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <footer>Route10 · Talks to your FastAPI backend</footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
